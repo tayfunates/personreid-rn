@@ -8,11 +8,16 @@ import pickle
 class ReID_RN(nn.Module):
 	def __init__(self, config_mlp, config_clf, dropout_prob=0.2):
 		super(ReID_RN, self).__init__()
-		self.mlp = RN_MLP(config_mlp[0], config_mlp[1], config_mlp[2], dropout_prob)
+		relationFeatureSize = 256
+		self.convlayer = nn.Conv2d(config_mlp[0]/2, relationFeatureSize, kernel_size=1, stride=1, padding=0)
+		self.mlp = RN_MLP(relationFeatureSize * 2, config_mlp[1], config_mlp[2], dropout_prob)
 		self.clf = RN_CLF(config_clf[0], config_clf[1], config_clf[2], config_clf[3], config_clf[4], dropout_prob)
 		self.total_dim = config_clf[0]
 		
 	def forward(self, X1, X2):
+		X1 = self.convlayer.forward(X1)
+		X2 = self.convlayer.forward(X2)
+		
 		x1 = X1.view(X1.shape[0], X1.shape[1], -1)
 		x2 = X2.view(X2.shape[0], X2.shape[1], -1)
 
@@ -91,10 +96,4 @@ def _make_classifier(D_in, D_h, D_out, ignore_norm=False, dropout_prob=0.2):
 	linear_cls = nn.Linear(D_h, D_out)
 	layers = [linear, activation, dropout, linear_cls]
 	return layers
-
-if __name__ == '__main__':
-	
-	with open("/media/nihattekeli/My Book/ONUR/Reid-Relation/src/outputs/market1501/query_features.pickle", "r") as handle:
-		features = pickle.load(handle)
-	nnet = ReID_RN((4096, 256, 4), (256, 1, 256, 29, 3))
 	

@@ -34,7 +34,7 @@ class AverageMeter(object):
         self.val = val
         self.sum += val * n
         self.count += n
-        self.avg = self.sum / self.count
+        self.avg = float(self.sum) / float(self.count)
 
 def save_checkpoint(state, is_best, prefix="", fpath='checkpoint.pth.tar'):
     mkdir_if_missing(osp.dirname(fpath))
@@ -52,7 +52,7 @@ class Logger(object):
         self.file = None
         if fpath is not None:
             mkdir_if_missing(os.path.dirname(fpath))
-            self.file = open(fpath, 'w')
+            self.file = open(fpath, 'a')
 
     def __del__(self):
         self.close()

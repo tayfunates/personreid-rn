@@ -73,8 +73,8 @@ class Market1501(object):
 		self.num_gallery_pids = num_gallery_pids
 
 	def _create_dataset(self, path, relabel=True):
-		with open(path, "rb") as handle:
-			_set = pickle.load(handle, encoding='latin1')
+		with open(path, "r") as handle:
+			_set = pickle.load(handle)
 			features = _set["features"]
 
 		dataset = []

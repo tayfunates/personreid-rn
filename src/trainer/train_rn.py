@@ -57,34 +57,30 @@ modelNum = 2
 # we only train with 12 objects by discarding the boundary objects
 discardBGObjects = False
 
-resume = ""
-evaluate_only = False
+resume = "/home/burak/Desktop/workspace/Reid-RN/Reid-Relation/src/trainer/log/MarketRN/o84_lr0.00001_model2_dropout0.2_discardBGObjectsFalse/rn_from_pretrained_best_model.pth.tar"
+evaluate_only = True
 
 # EVALUATION ICIN BURAYI AC
 # resume = osp.join(cur_dir, "log_pretrained", "rn_from_pretrained_best_model.pth.tar")
 # resume = osp.join(cur_dir, "log", "MarketRN", "lr0.00005", "rn_from_pretrained_best_model.pth.tar")
-# resume = "/home/tayfun/Desktop/workspace/Reid-RN/Reid-Relation/src/trainer/log/MarketRN/lr0.00001_model2_dropout0.2_discardBGObjectsFalse_rSize512/rn_from_pretrained_best_model.pth.tar"
+#resume = "/home/burak/Desktop/workspace/Reid-RN/Reid-Relation/src/trainer/log/MarketRN/lr0.00001_model2_dropout0.2_discardBGObjectsFalse_rSize512/rn_from_pretrained_best_model.pth.tar"
 
 max_epoch = 180
 eval_step = 10
 print_freq = 100
-test_print_freq = 1000
+test_print_freq = 10
 use_metric_cuhk03 = False
+dist_alpha = torch.tensor(1.0).cuda()
 
-torch.manual_seed(seed)
-os.environ['CUDA_VISIBLE_DEVICES'] = gpu_devices
-use_gpu = torch.cuda.is_available()
-
-dist_alpha = torch.tensor(1.0)
-if(use_gpu):
-	dist_alpha = dist_alpha.cuda()
-
-logFolderName = "lr{learning_rate:7.5f}_model{model_num}_dropout{dp}_discardBGObjects{dbg}".format(learning_rate=lr, model_num=modelNum, dp=dropout_prob, dbg=discardBGObjects)
+logFolderName = "o84_lr{learning_rate:7.5f}_model{model_num}_dropout{dp}_discardBGObjects{dbg}".format(learning_rate=lr, model_num=modelNum, dp=dropout_prob, dbg=discardBGObjects)
 
 save_dir = osp.join("log", "MarketRN", logFolderName)
 
-#while os.path.isdir(save_dir):
-#	save_dir = save_dir + "c"
+while os.path.isdir(save_dir):
+	save_dir = save_dir + "c"
+
+if resume:
+	save_dir = osp.dirname(resume)
 
 def train(epoch, model, criterion, optimizer, trainloader, use_gpu):
 	losses = AverageMeter()
@@ -94,7 +90,8 @@ def train(epoch, model, criterion, optimizer, trainloader, use_gpu):
 	model.train()
 
 	end = time.time()
-
+	true_y = torch.tensor([[1.0]]).cuda()
+	false_y = torch.tensor([[0.0]]).cuda()
 	for batch_idx, (imgs, pids, camids) in enumerate(trainloader):
 		# measure data loading time
 		data_time.update(time.time() - end)
@@ -116,9 +113,7 @@ def train(epoch, model, criterion, optimizer, trainloader, use_gpu):
 			x1 = x1[:, :, 1:x1.shape[2]-1, 1:x1.shape[3]-1].clone()
 			x2 = x2[:, :, 1:x2.shape[2]-1, 1:x2.shape[3]-1].clone()
 
-		ground_truths = torch.FloatTensor([1] * pos_size + [0] * pos_size).unsqueeze(1)
-		if use_gpu:
-			ground_truths = ground_truths.cuda()
+		ground_truths = torch.cuda.FloatTensor([1] * pos_size + [0] * pos_size).unsqueeze(1)
 
 		outputs = model(x1, x2)
 
@@ -199,10 +194,15 @@ def test(model, queryloader, galleryloader, use_gpu, galleryBatch, ranks=[1, 5, 
 	return cmc[0], distmat
 
 if __name__ == '__main__':
+	torch.manual_seed(seed)
+	os.environ['CUDA_VISIBLE_DEVICES'] = gpu_devices 
+	use_gpu = torch.cuda.is_available()
 
-	sys.stdout = Logger(osp.join(save_dir, 'log_train.txt'))
 	if evaluate_only:
 		sys.stdout = Logger(osp.join(save_dir, 'log_test.txt'))
+	else:
+		sys.stdout = Logger(osp.join(save_dir, 'log_train.txt'))
+
 
 	print("Currently using GPU {}".format(gpu_devices))
 	cudnn.benchmark = True
@@ -261,10 +261,7 @@ if __name__ == '__main__':
 	print("Initializing model: Reid_RN")
 	#model = ReID_RN((4096, 512, 3), (512, 1, 512, 256, 2))
 	model = ReID_RN((4096, hiddim1[modelNum], numhid1[modelNum]), (hiddim1[modelNum], 1, hiddim1[modelNum], hiddim2[modelNum], numhid2[modelNum]), dropout_prob)
-
-	if(use_gpu):
-		model.cuda()
-
+	model.cuda()
 	print("Model size: {:.5f}M".format(sum(p.numel() for p in model.parameters())/1000000.0))
 
 	criterion = torch.nn.BCELoss()
@@ -272,11 +269,15 @@ if __name__ == '__main__':
 	if decay_stepsize > 0:
 		scheduler = lr_scheduler.StepLR(optimizer, step_size=decay_stepsize, gamma=gamma)
 
+	start_epoch = 0
+	best_rank1 = -np.inf
+
 	if resume:
 		print("Loading checkpoint from '{}'".format(resume))
 		checkpoint = torch.load(resume)
 		model.load_state_dict(checkpoint['state_dict'])
 		start_epoch = checkpoint['epoch']
+		best_rank1 = checkpoint['rank1']
 
 	if evaluate_only:
 		print("Evaluate only")
@@ -288,11 +289,9 @@ if __name__ == '__main__':
         #    )
 		sys.exit(0)
 
-	start_epoch = 0
+	best_epoch = start_epoch
 	start_time = time.time()
 	train_time = 0
-	best_rank1 = -np.inf
-	best_epoch = 0
 	print("==> Start training")
 
 	for epoch in range(start_epoch, max_epoch):

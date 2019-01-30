@@ -10,10 +10,12 @@ class FCOutputModel(nn.Module):
     def __init__(self):
         super(FCOutputModel, self).__init__()
 
-        self.fc2 = nn.Linear(256, 256)
+        self.fc2 = nn.Linear(512, 256)
+        torch.nn.init.xavier_uniform_(self.fc2.weight)
         self.bn2 = nn.BatchNorm1d(256)
         self.fc3 = nn.Linear(256, 128)
         self.bn3 = nn.BatchNorm1d(128)
+        torch.nn.init.xavier_uniform_(self.fc3.weight)
 
     def forward(self, x):
         x = self.fc2(x)
@@ -21,9 +23,8 @@ class FCOutputModel(nn.Module):
         x = F.relu(x)
         x = F.dropout(x)
         x = self.fc3(x)
-    	x = self.bn3(x)
-     	x = F.relu(x)
-
+        x = self.bn3(x)
+        x = F.relu(x)
         return x
 
 
@@ -31,17 +32,29 @@ class ReidRNSelf(nn.Module):
     def __init__(self):
         super(ReidRNSelf, self).__init__()
 
-        self.initial1by1 = nn.Conv2d(2048, 64, kernel_size=1, stride=1, padding=0)
+        self.initial1by1 = nn.Conv2d(2048, 32, kernel_size=1, stride=1, padding=0)
 
         ##(number of filters per object+coordinate of object)*2
         # self.g_fc1 = nn.Linear((2048+2)*2, 256)
-        self.g_fc1 = nn.Linear((2048) * 2, 256)
+        self.g_fc1 = nn.Linear((2048) * 2, 512)
+        torch.nn.init.xavier_uniform_(self.g_fc1.weight)
+        self.bng1 = nn.BatchNorm1d(512)
 
-        self.g_fc2 = nn.Linear(256, 256)
+        self.g_fc2 = nn.Linear(512, 256)
+        torch.nn.init.xavier_uniform_(self.g_fc2.weight)
+        self.bng2 = nn.BatchNorm1d(256)
+
         self.g_fc3 = nn.Linear(256, 256)
+        torch.nn.init.xavier_uniform_(self.g_fc3.weight)
+        self.bng3 = nn.BatchNorm1d(256)
+
         self.g_fc4 = nn.Linear(256, 256)
+        torch.nn.init.xavier_uniform_(self.g_fc4.weight)
+        self.bng4 = nn.BatchNorm1d(256)
 
         self.f_fc1 = nn.Linear(256, 256)
+        torch.nn.init.xavier_uniform_(self.f_fc1.weight)
+        self.bnf1 = nn.BatchNorm1d(256)
 
         # prepare coord tensor
         # def cvt_coord(i):
@@ -63,6 +76,10 @@ class ReidRNSelf(nn.Module):
         x = x.squeeze(dim=1)
         #x = self.initial1by1(x)
         #print(x.shape)
+
+        glbl = self.initial1by1(x)
+        glbl = F.avg_pool2d(glbl, 2)
+        glbl = glbl.view(glbl.size(0), -1)
 
         """g"""
         mb = x.size()[0]
@@ -87,12 +104,16 @@ class ReidRNSelf(nn.Module):
         # reshape for passing through network
         x_ = x_full.view(mb * h * w * h * w, -1)
         x_ = self.g_fc1(x_)
+        # x_ = self.bng1(x_)
         x_ = F.relu(x_)
         x_ = self.g_fc2(x_)
+        # x_ = self.bng2(x_)
         x_ = F.relu(x_)
         x_ = self.g_fc3(x_)
+        # x_ = self.bng3(x_)
         x_ = F.relu(x_)
         x_ = self.g_fc4(x_)
+        # x_ = self.bng4(x_)
         x_ = F.relu(x_)
 
         # reshape again and sum
@@ -101,6 +122,11 @@ class ReidRNSelf(nn.Module):
 
         """f"""
         x_f = self.f_fc1(x_g)
+        # x_f = self.bnf1(x_f)
         x_f = F.relu(x_f)
 
+        x_f = torch.cat([x_f, glbl], 1) # Also add a global representation
+
         return self.fcout(x_f)
+
+
